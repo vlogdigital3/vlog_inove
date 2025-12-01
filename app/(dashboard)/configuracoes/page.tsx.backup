@@ -1,0 +1,446 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useAuth } from "@/contexts/AuthContext";
+import { useTheme } from "next-themes";
+import { Save, Moon, Sun, Link2, Copy, RefreshCw, Eye, Rss, ExternalLink, Check } from "lucide-react";
+import { feedService } from "@/services/feedService";
+
+export default function ConfiguracoesPage() {
+    const { user } = useAuth();
+    const { theme, setTheme } = useTheme();
+    const [saving, setSaving] = useState(false);
+    const [feedEnabled, setFeedEnabled] = useState(false);
+    const [feedToken, setFeedToken] = useState("");
+    const [copied, setCopied] = useState(false);
+    const [feedStats, setFeedStats] = useState({
+        totalAccess: 0,
+        lastAccessed: null as string | null,
+        totalProperties: 0,
+    });
+
+    const toggleTheme = () => {
+        setTheme(theme === "dark" ? "light" : "dark");
+    };
+
+    const [userData, setUserData] = useState({
+        name: user?.name || "",
+        email: user?.email || "",
+        company: user?.company || "",
+    });
+
+    const [passwordData, setPasswordData] = useState({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+    });
+
+    const [feedSettings, setFeedSettings] = useState({
+        includeAllProperties: true,
+        includeAvailableOnly: false,
+        includeLeads: false,
+        webhookUrl: "",
+    });
+
+    const feedUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'https://vloginoveplus.com'}/api/feed/${feedToken}.xml`;
+
+    // Load feed settings on mount
+    useEffect(() => {
+        loadFeedSettings();
+        loadFeedStats();
+    }, []);
+
+    const loadFeedSettings = async () => {
+        const settings = await feedService.getFeedSettings();
+        if (settings) {
+            setFeedEnabled(settings.is_enabled);
+            setFeedToken(settings.feed_token);
+            setFeedSettings({
+                includeAllProperties: settings.include_all_properties,
+                includeAvailableOnly: settings.include_available_only,
+                includeLeads: settings.include_leads,
+                webhookUrl: settings.webhook_url || "",
+            });
+        }
+    };
+
+    const loadFeedStats = async () => {
+        const stats = await feedService.getFeedStats();
+        setFeedStats(stats);
+    };
+
+    const handleSaveProfile = async () => {
+        setSaving(true);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        setSaving(false);
+        alert("Configurações salvas com sucesso!");
+    };
+
+    const handleChangePassword = async () => {
+        if (passwordData.newPassword !== passwordData.confirmPassword) {
+            alert("As senhas não coincidem");
+            return;
+        }
+        setSaving(true);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        setSaving(false);
+        setPasswordData({ currentPassword: "", newPassword: "", confirmPassword: "" });
+        alert("Senha alterada com sucesso!");
+    };
+
+    const handleCopyFeedUrl = () => {
+        navigator.clipboard.writeText(feedUrl);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    const handleRegenerateFeedToken = async () => {
+        if (confirm("Tem certeza? Isso invalidará o link atual do feed.")) {
+            const newToken = await feedService.regenerateFeedToken();
+            if (newToken) {
+                setFeedToken(newToken);
+                alert("Token regenerado com sucesso!");
+            } else {
+                alert("Erro ao regenerar token. Tente novamente.");
+            }
+        }
+    };
+
+    const handleToggleFeed = async (enabled: boolean) => {
+        const success = await feedService.toggleFeed(enabled);
+        if (success) {
+            setFeedEnabled(enabled);
+        } else {
+            alert("Erro ao atualizar configuração do feed.");
+        }
+    };
+
+    const handleSaveFeedSettings = async () => {
+        setSaving(true);
+        const success = await feedService.updateFeedSettings({
+            include_all_properties: feedSettings.includeAllProperties,
+            include_available_only: feedSettings.includeAvailableOnly,
+            include_leads: feedSettings.includeLeads,
+            webhook_url: feedSettings.webhookUrl || null,
+        });
+
+        setSaving(false);
+
+        if (success) {
+            alert("Configurações do feed salvas com sucesso!");
+            // Send webhook notification if URL is configured
+            if (feedSettings.webhookUrl) {
+                await feedService.sendWebhookNotification(feedSettings.webhookUrl, 'feed_settings_updated');
+            }
+        } else {
+            alert("Erro ao salvar configurações do feed.");
+        }
+    };
+
+    return (
+        <div className="space-y-6 max-w-4xl">
+            {/* Header */}
+            <div>
+                <h1 className="text-3xl font-bold tracking-tight">Configurações</h1>
+                <p className="text-muted-foreground mt-1">
+                    Gerencie suas preferências e informações da conta
+                </p>
+            </div>
+
+            {/* User Data */}
+            <Card>
+                <CardHeader>
+                    <CardTitle>Dados do Usuário</CardTitle>
+                    <CardDescription>
+                        Atualize suas informações pessoais
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                            <Label htmlFor="name">Nome Completo</Label>
+                            <Input
+                                id="name"
+                                value={userData.name}
+                                onChange={(e) => setUserData({ ...userData, name: e.target.value })}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="email">E-mail</Label>
+                            <Input
+                                id="email"
+                                type="email"
+                                value={userData.email}
+                                onChange={(e) => setUserData({ ...userData, email: e.target.value })}
+                            />
+                        </div>
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="company">Empresa</Label>
+                        <Input
+                            id="company"
+                            value={userData.company}
+                            onChange={(e) => setUserData({ ...userData, company: e.target.value })}
+                            placeholder="Nome da sua imobiliária"
+                        />
+                    </div>
+                    <Button onClick={handleSaveProfile} disabled={saving}>
+                        <Save className="w-4 h-4 mr-2" />
+                        {saving ? "Salvando..." : "Salvar Alterações"}
+                    </Button>
+                </CardContent>
+            </Card>
+
+            {/* Feed XML - NEW SECTION */}
+            <Card className="border-2 border-blue-200 dark:border-blue-900">
+                <CardHeader>
+                    <div className="flex items-center gap-2">
+                        <Rss className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                        <CardTitle>Feed XML Público</CardTitle>
+                    </div>
+                    <CardDescription>
+                        Integre seus imóveis com parceiros, portais imobiliários e sistemas externos
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                    {/* Toggle Feed */}
+                    <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
+                        <div>
+                            <>
+                                {/* Feed URL */}
+                                <div className="space-y-2">
+                                    <Label>URL do Feed</Label>
+                                    <div className="flex gap-2">
+                                        <Input
+                                            value={feedUrl}
+                                            readOnly
+                                            className="font-mono text-sm"
+                                        />
+                                        <Button
+                                            onClick={handleCopyFeedUrl}
+                                            variant="outline"
+                                            className="flex-shrink-0"
+                                        >
+                                            {copied ? (
+                                                <>
+                                                    <Check className="w-4 h-4 mr-2" />
+                                                    Copiado!
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Copy className="w-4 h-4 mr-2" />
+                                                    Copiar
+                                                </>
+                                            )}
+                                        </Button>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">
+                                        Use esta URL para integrar com portais como VivaReal, OLX, QuintoAndar, etc.
+                                    </p>
+                                </div>
+
+                                {/* Actions */}
+                                <div className="flex items-center space-x-2">
+                                    <input
+                                        type="checkbox"
+                                        id="includeAll"
+                                        checked={feedSettings.includeAllProperties}
+                                        onChange={(e) => setFeedSettings({ ...feedSettings, includeAllProperties: e.target.checked })}
+                                        className="w-4 h-4"
+                                    />
+                                    <Label htmlFor="includeAll" className="cursor-pointer">
+                                        Incluir todos os imóveis
+                                    </Label>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                    <input
+                                        type="checkbox"
+                                        id="availableOnly"
+                                        checked={feedSettings.includeAvailableOnly}
+                                        onChange={(e) => setFeedSettings({ ...feedSettings, includeAvailableOnly: e.target.checked })}
+                                        className="w-4 h-4"
+                                    />
+                                    <Label htmlFor="availableOnly" className="cursor-pointer">
+                                        Apenas imóveis disponíveis
+                                    </Label>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                    <input
+                                        type="checkbox"
+                                        id="includeLeads"
+                                        checked={feedSettings.includeLeads}
+                                        onChange={(e) => setFeedSettings({ ...feedSettings, includeLeads: e.target.checked })}
+                                        className="w-4 h-4"
+                                    />
+                                    <Label htmlFor="includeLeads" className="cursor-pointer">
+                                        Incluir leads no feed
+                                    </Label>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Webhooks */}
+                        <div className="space-y-2">
+                            <Label htmlFor="webhookUrl">Webhook (Opcional)</Label>
+                            <Input
+                                id="webhookUrl"
+                                placeholder="https://seu-sistema.com/webhook"
+                                value={feedSettings.webhookUrl}
+                                onChange={(e) => setFeedSettings({ ...feedSettings, webhookUrl: e.target.value })}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                Notificar parceiros quando houver atualizações no feed
+                            </p>
+                        </div>
+
+                        {/* Estatísticas (Placeholder) */}
+                        <div className="grid gap-4 md:grid-cols-3 p-4 bg-muted rounded-lg">
+                            <div>
+                                <p className="text-sm text-muted-foreground">Total de Acessos</p>
+                                <p className="text-2xl font-bold">0</p>
+                            </div>
+                            <div>
+                                <p className="text-sm text-muted-foreground">Última Atualização</p>
+                                <p className="text-sm font-medium">Nunca</p>
+                            </div>
+                            <div>
+                                <p className="text-sm text-muted-foreground">Imóveis no Feed</p>
+                                <p className="text-2xl font-bold">0</p>
+                            </div>
+                        </div>
+
+                        <Button onClick={handleSaveFeedSettings} disabled={saving}>
+                            <Save className="w-4 h-4 mr-2" />
+                            Salvar Configurações do Feed
+                        </Button>
+                    </>
+                    )}
+
+                    <div className="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-lg">
+                        <p className="text-sm text-blue-800 dark:text-blue-300">
+                            <strong>Fase 2:</strong> A geração real do XML será implementada no backend.
+                            Esta interface está preparada para quando a funcionalidade estiver completa.
+                        </p>
+                    </div>
+                </CardContent>
+            </Card >
+
+            {/* Theme */}
+            < Card >
+                <CardHeader>
+                    <CardTitle>Aparência</CardTitle>
+                    <CardDescription>
+                        Personalize a aparência do sistema
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="font-medium">Tema</p>
+                            <p className="text-sm text-muted-foreground">
+                                {theme === "dark" ? "Modo Escuro" : "Modo Claro"}
+                            </p>
+                        </div>
+                        <Button onClick={toggleTheme} variant="outline">
+                            {theme === "dark" ? (
+                                <>
+                                    <Sun className="w-4 h-4 mr-2" />
+                                    Modo Claro
+                                </>
+                            ) : (
+                                <>
+                                    <Moon className="w-4 h-4 mr-2" />
+                                    Modo Escuro
+                                </>
+                            )}
+                        </Button>
+                    </div>
+                </CardContent>
+            </Card >
+
+            {/* Password */}
+            < Card >
+                <CardHeader>
+                    <CardTitle>Alterar Senha</CardTitle>
+                    <CardDescription>
+                        Atualize sua senha de acesso
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="currentPassword">Senha Atual</Label>
+                        <Input
+                            id="currentPassword"
+                            type="password"
+                            value={passwordData.currentPassword}
+                            onChange={(e) =>
+                                setPasswordData({ ...passwordData, currentPassword: e.target.value })
+                            }
+                        />
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                            <Label htmlFor="newPassword">Nova Senha</Label>
+                            <Input
+                                id="newPassword"
+                                type="password"
+                                value={passwordData.newPassword}
+                                onChange={(e) =>
+                                    setPasswordData({ ...passwordData, newPassword: e.target.value })
+                                }
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="confirmPassword">Confirmar Nova Senha</Label>
+                            <Input
+                                id="confirmPassword"
+                                type="password"
+                                value={passwordData.confirmPassword}
+                                onChange={(e) =>
+                                    setPasswordData({ ...passwordData, confirmPassword: e.target.value })
+                                }
+                            />
+                        </div>
+                    </div>
+                    <Button onClick={handleChangePassword} disabled={saving}>
+                        <Save className="w-4 h-4 mr-2" />
+                        Alterar Senha
+                    </Button>
+                </CardContent>
+            </Card >
+
+            {/* Company Data */}
+            < Card >
+                <CardHeader>
+                    <CardTitle>Dados da Empresa</CardTitle>
+                    <CardDescription>
+                        Informações sobre sua imobiliária (disponível na Fase 2)
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                            <Label htmlFor="companyName">Nome da Empresa</Label>
+                            <Input id="companyName" placeholder="Imobiliária XYZ" disabled />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="cnpj">CNPJ</Label>
+                            <Input id="cnpj" placeholder="00.000.000/0000-00" disabled />
+                        </div>
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="companyAddress">Endereço</Label>
+                        <Input id="companyAddress" placeholder="Rua, número - Cidade" disabled />
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                        Funcionalidade completa disponível após integração com back-end
+                    </p>
+                </CardContent>
+            </Card >
+        </div >
+    );
+}
