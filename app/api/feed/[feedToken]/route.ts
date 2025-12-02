@@ -20,9 +20,10 @@ function cdata(content: string): string {
 
 export async function GET(
     request: NextRequest,
-    { params }: { params: { feedToken: string } }
+    props: { params: Promise<{ feedToken: string }> }
 ) {
     try {
+        const params = await props.params;
         const feedToken = params.feedToken.replace('.xml', '');
 
         // TODO: Validate feed token and get user settings from database
